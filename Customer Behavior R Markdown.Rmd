@@ -1,0 +1,282 @@
+---
+title: "Exploring Customer Behaviour using ggplot and correlation test"
+author: "Lucas Marquez Morato Fedrigo"
+date: 20/05/2019
+output:
+  html_document:
+    df_print: paged
+    toc: yes 
+    toc_depth: 2
+---
+
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Introduction
+
+This project is created to collaborate with other data science students, sharing some knowledge around interesting things. It was done in R Markdown, and you can find the .rmd and the dataset files on my Github, by clicking [here](https://github.com/lucasmoratof/behaviour_with_ggplot_and_correlation).
+
+We are going to perform an exploratory analysis to find **insights about customers patterns** using R code, graphics and statistical tools. The dataset is available on kaggle, through this link: <https://www.kaggle.com/fayomi/advertising>.
+
+I'm going to show all the codes on this document, as my goal is to show you how I coded and how the output looks like. 
+
+## About the Dataset
+
+This dataset was created by Jose Portilla for his Udemy Course 'Python for Data Science and Machine Learning Bootcamp'. It is an artificial dataset, designed to be used for learning purposes.
+
+Let's start with an overview of the features of the dataset, obtained from kaggle:
+
+|Feature|	Description|
+|---------------------|-------------------------------------------|
+|1. Daily  Time Spent on a Site|	Time spent by the user on a site in minutes.|
+|2. Age|	Customer's age in terms of years.|
+|3. Area Income|	Average income of geographical area of consumer.|
+|4. Daily Internet Usage|	Average minutes in a day consumer is on the internet.|
+|5. Ad Topic Line|	Headline of the advertisement.|
+|6. City|	City of the consumer.|
+|7. Male|	Whether or not a consumer was male.|
+|8. Country|	Country of the consumer.|
+|9. Timestamp|	Time at which user clicked on an Ad or the closed window.|
+|10. Clicked on Ad|	0 or 1 is indicated clicking on an Ad.|
+
+## Exploratory Data Analysis (EDA)
+### Load Libraries
+```{r message=FALSE, warning=FALSE}
+# loading the libraries we're going to use:
+library('readr') # optimised function to read files.
+library('dplyr') # For manipulations tasks.
+library('ggplot2') # For graphics and plots. 
+library('knitr') # the father and mother of our work on markdown, permit to publish in pdf, word and html.
+library('magrittr') # to improve code readability, making possible the use of the pipeline %>% 
+library('gridExtra') # to arrange multiple plots in a desired number of rows and columns
+library('polycor') #for biserial correlation tests
+```
+### Load Data
+```{r message=FALSE, warning=FALSE}
+adds <- read_csv("advertising.csv") # read the .csv file and assign it to a variable.
+```
+### Examine Data
+```{r message=FALSE, warning=FALSE}
+# creating a dataframe to display basic information. It could be used other tools like glimpse, or packages like skimr, but I opted this way just to look nicer in the markdown.
+data.frame(variable = names(adds),
+           classe = sapply(adds, typeof),
+           first_values = sapply(adds, function(x) paste0(head(x, n=4),  collapse = ", ")),
+           row.names = NULL) %>% kable()
+```
+### Summarising Numerical Variables
+*Not including binary values*
+```{r message=FALSE, warning=FALSE, paged.print=FALSE}
+numeric_cols <- c("Daily Time Spent on Site", "Age", "Area Income", "Daily Internet Usage")
+summary(adds[numeric_cols]) %>% kable() 
+```
+
+From this first analysis, it seems that the **mean** and the **median** are very close to each other, indicating a normal distribution. Let's check the 'Age' column as an example to visualise that:
+
+```{r fig.height=3, fig.width=4, fig.align='center'}
+adds %>% # pipelines are incredibly useful when we use ggplot, it helps to organise the layers, improving readability
+  ggplot(., aes(x=Age)) + 
+  geom_density(fill='lightgreen') +
+  geom_vline(aes(xintercept=mean(Age)), color='blue', show.legend=T) +
+  geom_vline(aes(xintercept=median(Age)), color='red', show.legend = TRUE) + 
+  annotate("text", label = 'Mean', x = 40, y = 0.02, size = 3, color='blue') +
+  annotate("text", label = 'Mediam', x = 30, y = 0.02, size = 3, color='red') 
+```
+
+## Data Cleaning and Preparation
+
+As this dataset was created for educational purposes, it comes pretty clean and ready to work. I've chosen not to remove any column as I want to have all the information available when performing the analysis. However, if this dataset had come from another source, it would be important to look more about missing or duplicated values, eliminating the excess of information not on the scope of the analysis. 
+
+Always remember that each project is in a different context, and we need to work with the data according to the goals of the analysis.
+
+## Defining the questions
+
+Our objective is basically to understand why some customers click on adds and why others don't. 
+
+With that analysis, we would be possible to think about further steps like developing predictive models, but essentially the first step is to understand customer's behaviour.
+
+That said, I've came up with two insights:
+
+1. Does gender affects the way people click on adds?
+2. Is age a key factor to determine who is more likely to click on adds?
+
+## 1. Does gender affects the way people click on adds?
+
+Let's start showing how many 'yes' and 'no' clicks we have, without distinctions between gender.
+
+```{r fig.height=3, fig.width=4, fig.align='center'}
+adds$`Clicked on Ad` <- as.factor(adds$`Clicked on Ad`) # It's better for graphics to work with factors.
+ggplot(adds, aes(x = `Clicked on Ad`, fill= `Clicked on Ad`)) + 
+  geom_bar() +
+  geom_text(stat='count',aes(label=..count..),vjust=2) +
+  scale_x_discrete("Clicks", 
+                   labels= c('No','Yes')) +
+  theme(legend.position = "none",
+        axis.ticks.x=element_blank()) +
+  labs(x= NULL, y = 'Click Counts',
+       title = 'Clicks on Adds')
+```
+
+We can see by the image above that's an equally distributed 'yes' and 'no' answers, that means we have 500 people who actually clicked on the ad.
+
+Now let's check how the 'yes' and 'no' clicks work by gender.
+
+```{r fig.align='center', fig.height=3, fig.width=4}
+adds$Male <- as.factor(adds$Male)
+ggplot(adds, aes(x =`Clicked on Ad`, fill = Male)) + # fill will put colour based on the information it contains 
+  theme_bw() +
+  geom_bar() +
+  scale_x_discrete(name="Clicks", 
+                   labels= c('No','Yes')) +
+  scale_fill_discrete(name = 'Gender', labels = c('Female','Male')) +
+  labs(y = 'count', x = 'Click on Add',
+       title = 'Click on Adds by Gender')
+```
+
+Apparently we have a slightly higher amount of 'yes' clicks for females. Let's check the numbers of females who clicked on the ad:
+
+```{r message=FALSE, warning=FALSE, paged.print=FALSE}
+adds %>%
+  filter(.,Male == 0) %>% # remember the column 'Male' has binary values, 1= Yes (it's a male) and 0= No (female)
+  count()
+```
+
+Not really a significant difference between males and females that clicked on the ad. We need to remember that this dataset was created for educational purposes, so it can has some bias we wouldn't necessarily find in real world data. But let's keep investigating it.
+
+Let's see the gender distribution by area average income.
+
+```{r fig.align='center', fig.height=3, fig.width=4}
+adds %>%
+ggplot(., aes(x=`Area Income`, fill = Male)) + 
+  geom_histogram(position = 'stack', bins = 25, alpha=0.6) +
+  scale_fill_discrete(name = 'Gender', labels = c('Female','Male')) +
+  labs(y = 'Density', x = 'Area Average Income',
+       title = 'Area Income by Gender')
+```
+
+Here we have some interesting information. It appears there is some income difference based on gender, let's compare the average earnings.
+
+```{r}
+# first we create two vectors, one for males and one for females
+male_mean <- adds %>%
+  filter(Male == 1) %$%
+  round(mean(`Area Income`), 2)
+
+female_mean <- adds %>%
+  filter(Male == 0) %$%
+  round(mean(`Area Income`), 2)
+
+# we use cat() function, which works similar to print() 
+cat("Average earning for whole group is", mean(adds$`Area Income`)) 
+cat("Male average earnings is", male_mean)
+cat("Female average earnings is", female_mean)
+```
+
+And again the dataset seems very well balanced, without significant difference in earnings based on gender. However, it worth try to verify what happens when we filter the dataset including **earnings higher than the group average** (THE RICH!). 
+
+Let's make a plot for that scenario:
+
+- Yes or No for click on the ad, by gender;
+- How many people clicked Yes on ad based on gender.
+
+```{r fig.height=3, fig.width=4, fig.align='center'}
+# Subseting data for Average Income Higher than 55.000
+rich_adds <- adds %>%
+  filter(`Area Income` > 55000)
+# Creating the plot for yes and no clicks on add, grouping by gender
+rich_adds$Male <- as.factor(rich_adds$Male)
+rich_adds %>%
+  ggplot(., aes(x = `Clicked on Ad`, fill= `Male`)) + 
+  geom_bar() +
+  geom_text(stat='count',aes(label=..count..),check_overlap = TRUE) +
+  scale_x_discrete("Clicks", 
+                   labels= c('No','Yes')) +
+  scale_fill_discrete(name = 'Gender', labels = c('Female','Male')) +
+  labs(y = 'Click Counts',
+       title = 'Clicks on Adds for Income > 55.000')
+```
+
+We can see that we have a much higher volume of people who didn't click on the add when the average income is high. But if we take just the people who actually clicked on the add based on high income, we can see an equal distribution based on gender, exactly 90 males and 90 females clicked on the add.
+
+Based in our analysis, **we didn't find evidence that gender plays a significant role on the way people click or not on the adds**.
+
+## 2. Is age a key factor to determine who is more likely to click on adds?
+
+Let's start looking for the age distribution among people who clicked or not on the ad.
+
+```{r fig.align='center', fig.height=3, fig.width=5}
+adds %>%
+  ggplot(., aes(x=Age, fill= `Clicked on Ad`)) +
+  geom_histogram(bins = 15, alpha=0.5, position = 'identity') + # don't forget to set your alpha, or transparency level
+  scale_fill_discrete(name = 'Clicked on Ad', labels = c('No','Yes'))
+```
+
+We can see on the graph a predominance of 'no' in the group up to 35 years old. The 'yes' appears to be higher for people around 40 years, with increasing predominance as the group's age increases.
+
+The only scenario were it seems we have a balance is for the group between 30 to 35 years. Other groups show a strong preference for one or another option.
+
+An initial perceptions shows that it's possible that we will find a positive correlation between age and "yes". 
+
+Let's try to visualize that using a scatter and a box plots.
+
+```{r fig.height=3, fig.width=3, fig.align='center'}
+adds %>%
+  ggplot(., aes(x=`Clicked on Ad`, y= Age, color=`Clicked on Ad`)) +
+  geom_point() +
+  theme(legend.position="none") 
+```
+
+```{r fig.height=3, fig.width=3, fig.align='center'}
+adds %>%
+  ggplot(., aes(x=`Clicked on Ad`, y= Age, color=`Clicked on Ad`)) +
+  geom_boxplot() +
+  theme(legend.position="none")
+```
+
+It seems that a correlation might exists between Age and the Clicks. R offers a native function to calculate the correlation between variables, but we are doing a Biserial Correlation test, as one of our variables has just two values: 0 (No) and 1 (yes). Klopper (2018), suggests that is possible to use Pearson correlation, or a polyserial test that is included in a package called polycor. We're going to perform both and see what kind of results we got.
+
+```{r echo=FALSE, include=FALSE}
+adds <- read_csv('advertising.csv')
+```
+
+```{r}
+# the magic of doing statistics in just a line of code S2
+cor.test(adds$Age,adds$`Clicked on Ad`) 
+polyserial(adds$Age, adds$`Clicked on Ad`)
+```
+
+On the Pearson's test we've got a correlation of **0.49**, and with the polyserial test we have find a correlation of **0.62**. How we should interpret these results? Frost (2018), defines the strength of correlation as:
+
+- Extreme values of -1 and 1 indicate a perfectly linear relationship meaning that if a variable changes, it will be perfectly followed by the other variable;
+- A coefficient of 0 represents no linear relationship;
+- The values in between -1 and 1 indicates the strength of the correlation. Closer to it's limits, stronger it is;
+- Negative coefficients represent that when one of the values increase, the other decrease. Positive coefficients have the opposite effect, when one value increases, the other value increases as well.
+
+Applying that to our values we can conclude that:
+
+- We have a positive correlation between Age and Clicked on Ad. As the age increases, it seems that more people click on the adds.
+- The values obtained, 0.49 and 0.62, show a medium to strong correlation.
+- It appears that age is a key factor to determine who is more likely to click on adds. However, it is always good to remember that *correlation is not causation*, and this result could be used as a good start into deeper investigations, but not as a conclusion by itself.
+
+## Conclusion
+
+On this quick project I would like to introduce some of the techniques we could use in ggplot when doing EDA, as we need to include on the layers some statistical information, and how plots can help to visualize the results, making it easier to achieve our conclusions. Also, as this text was written in R Markdown, it's interesting to see how flexible code are, and the many applications of it.
+
+I hope this information will be useful for another students. We learn together, we learn forever!
+
+# References
+
+Torgo, Luiz (2017). *Data Mining with R*. 2nd edn. UK: Chapman and Hall/CRC.
+
+Stowell,  S. (2014) *Using R for Statistics*. 1st edn. Apress.
+
+Azevedo, A. and  Santos, M. F. (2008) *‘KDD, semma and CRISP-DM: A parallel overview’*, in IADIS European Conference on Data Mining 2008. Amsterdam, The Netherlands, July 24-26, 2008, pp. 182-185. Available at https://www.researchgate.net/publication/220969845_KDD_semma_and_CRISP-DM_A_parallel_overview [Accessed 12 April 2019]
+ 
+Niekisch, N.  *Final Assignment in Data Analysis and Visualization with R*. Available at: https://rstudio-pubs-static.s3.amazonaws.com/157640_033e81855eb34dd6b5305fc6a7f1e402.html [Accessed 11 April 2019].
+
+Klopper, J (2018). *Biserial correlation* Available at: https://rpubs.com/juanhklopper/biserial_correlation [Accessed 26 April 2019]
+
+Wickham, H (2016). *Package ‘hflights’*. Available at : https://cran.r-project.org/web/packages/hflights/hflights.pdf [Accessed 1 March 2019].
+
